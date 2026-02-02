@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIVALTO 予約空き状況</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #c0392b;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+        }
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .container { width: 100%; max-width: 480px; }
+        header { text-align: center; margin-bottom: 24px; }
+        h1 { font-size: 1.4rem; color: var(--primary-color); letter-spacing: 0.1em; }
+        .status-card {
+            background: var(--card-bg); border-radius: 12px; padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 16px;
+        }
+        .date-header { display: flex; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; }
+        .date-label { font-weight: 700; font-size: 1.1rem; }
+        .event-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed #eee; }
+        .event-item:last-child { border-bottom: none; }
+        .status-badge { background-color: #fff5f5; color: var(--accent-color); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; }
+        #loading { text-align: center; padding: 40px; }
+        .spinner { width: 30px; height: 30px; border: 3px solid rgba(0,0,0,0.1); border-top: 3px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        footer { margin-top: 30px; text-align: center; font-size: 0.75rem; color: #bdc3c7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>hair studio.VIVALTO</h1>
+            <div style="font-size: 0.85rem; color: #7f8c8d;">予約空き状況 (今後7日間)</div>
+        </header>
+
+        <div id="loading">
+            <div class="spinner"></div>
+            <p>最新の予約状況を同期中...</p>
+        </div>
+        <div id="content" style="display: none;"></div>
+
+        <footer>&copy; hair studio.VIVALTO</footer>
+    </div>
+
+    <script>
+        // GASのウェブアプリURLをここに貼り付けてください
+        const API_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw3XQBk_6-tNTQplsLdmzh9DTkd4n7usJTZ8Ecl98ldW5zPRvWpZgpvxKw6aiEihPVE6g/exec';
+
+        async function init() {
+            const content = document.getElementById('content');
+            const loading = document.getElementById('loading');
+            
+            try {
+                if (API_ENDPOINT.includes('ここにGAS')) throw new Error('API URLが未設定です。');
+                const response = await fetch(API_ENDPOINT);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    render(data.events);
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (err) {
+                loading.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
+            }
+        }
+
+        function render(events) {
+            const content = document.getElementById('content');
+            if (events.length === 0) {
+                content.innerHTML = '<div class="status-card" style="text-align:center;">現在、予約はありません。</div>';
+                return;
+            }
+
+            const grouped = events.reduce((acc, ev) => {
+                const date = new Date(ev.startTime).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+                if (!acc[date]) acc[date] = [];
+                acc[date].push(ev);
+                return acc;
+            }, {});
+
+            content.innerHTML = Object.entries(grouped).map(([date, items]) => `
+                <div class="status-card">
+                    <div class="date-header"><div class="date-label">${date}</div></div>
+                    ${items.map(item => `
+                        <div class="event-item">
+                            <div style="font-weight:500;">${new Date(item.startTime).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit'})} - ${new Date(item.endTime).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit'})}</div>
+                            <div class="status-badge">予約あり</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+        }
+
+        init();
+    </script>
+</body>
+</html>

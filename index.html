@@ -9,106 +9,186 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --accent-color: #c0392b;
-            --bg-color: #f8f9fa;
-            --card-bg: #ffffff;
-            --text-color: #333333;
+            --primary: #2c3e50;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --bg: #f8f9fa;
         }
         body {
             font-family: 'Noto Sans JP', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0; padding: 20px;
+            background-color: var(--bg);
+            color: var(--primary);
+            margin: 0; padding: 15px;
             display: flex; flex-direction: column; align-items: center;
         }
-        .container { width: 100%; max-width: 480px; }
-        header { text-align: center; margin-bottom: 24px; }
-        h1 { font-size: 1.4rem; color: var(--primary-color); letter-spacing: 0.1em; }
-        .status-card {
-            background: var(--card-bg); border-radius: 12px; padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 16px;
-        }
-        .date-header { display: flex; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; }
-        .date-label { font-weight: 700; font-size: 1.1rem; }
-        .event-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed #eee; }
-        .event-item:last-child { border-bottom: none; }
-        .status-badge { background-color: #fff5f5; color: var(--accent-color); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; }
+        .container { width: 100%; max-width: 500px; }
+        header { text-align: center; margin-bottom: 20px; }
+        h1 { font-size: 1.3rem; margin: 0 0 5px 0; }
+        
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; }
+        .tab-btn { flex: 1; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 8px; font-weight: bold; color: #95a5a6; cursor: pointer; white-space: nowrap; }
+        .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .day-card { background: #fff; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .date-header { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; font-weight: bold; }
+        .holiday-badge { background: #95a5a6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+
+        .slot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .slot-item { border: 1px solid #eee; border-radius: 8px; padding: 10px; text-align: center; }
+        .slot-item.available { background: #f0fff4; border-color: #c6f6d5; color: var(--success); }
+        .slot-item.unavailable, .slot-item.booked, .slot-item.closed { background: #fafafa; color: #bdc3c7; }
+        
+        .symbol { font-size: 1.2rem; font-weight: bold; }
+        .status-text { font-size: 0.7rem; }
+
         #loading { text-align: center; padding: 40px; }
-        .spinner { width: 30px; height: 30px; border: 3px solid rgba(0,0,0,0.1); border-top: 3px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        footer { margin-top: 30px; text-align: center; font-size: 0.75rem; color: #bdc3c7; }
+        .spinner { width: 30px; height: 30px; border: 3px solid #ddd; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* エラー表示エリア */
+        #error-area { display: none; background: #ffecec; border: 1px solid #f5c6cb; color: #721c24; padding: 20px; border-radius: 8px; margin-top: 20px; word-break: break-all; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>hair studio.VIVALTO</h1>
-            <div style="font-size: 0.85rem; color: #7f8c8d;">予約空き状況 (今後7日間)</div>
+            <div style="font-size:0.8rem; color:#7f8c8d;">ご予約空き状況 (28日間)</div>
         </header>
 
-        <div id="loading">
-            <div class="spinner"></div>
-            <p>最新の予約状況を同期中...</p>
+        <div id="loading"><div class="spinner"></div>確認中...</div>
+        
+        <!-- エラー表示用 -->
+        <div id="error-area">
+            <h3>通信エラー</h3>
+            <p id="error-msg"></p>
+            <p style="font-size:0.8rem; margin-top:10px;">開発者の方へ: GASのデプロイ更新(新バージョン発行)が行われているか確認してください。</p>
         </div>
-        <div id="content" style="display: none;"></div>
 
+        <div id="main-content" class="hidden">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchWeek(0)">今週</button>
+                <button class="tab-btn" onclick="switchWeek(1)">2週目</button>
+                <button class="tab-btn" onclick="switchWeek(2)">3週目</button>
+                <button class="tab-btn" onclick="switchWeek(3)">4週目</button>
+            </div>
+            <div id="calendar-area"></div>
+        </div>
+        
         <footer>&copy; hair studio.VIVALTO</footer>
     </div>
 
     <script>
-        // GASのウェブアプリURLをここに貼り付けてください
+        // ==========================================
+        // 【重要】ここにGASのウェブアプリURLを貼り付けてください
+        // ==========================================
         const API_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw3XQBk_6-tNTQplsLdmzh9DTkd4n7usJTZ8Ecl98ldW5zPRvWpZgpvxKw6aiEihPVE6g/exec';
+        
+        let allDaysData = [];
 
-        async function init() {
-            const content = document.getElementById('content');
+        window.addEventListener('DOMContentLoaded', async () => {
             const loading = document.getElementById('loading');
-            
-            try {
-                if (API_ENDPOINT.includes('ここにGAS')) throw new Error('API URLが未設定です。');
-                const response = await fetch(API_ENDPOINT);
-                const data = await response.json();
+            const mainContent = document.getElementById('main-content');
+            const errorArea = document.getElementById('error-area');
+            const errorMsg = document.getElementById('error-msg');
 
-                if (data.status === 'success') {
-                    render(data.events);
-                    loading.style.display = 'none';
-                    content.style.display = 'block';
+            try {
+                if (API_ENDPOINT.includes('ここにGAS')) {
+                    throw new Error('API URLが設定されていません。index.htmlを編集してください。');
+                }
+
+                const response = await fetch(API_ENDPOINT);
+                
+                // レスポンスがJSONかどうか確認
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("GASからの応答がJSONではありません。デプロイ設定を確認してください。");
+                }
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    // データ構造チェック
+                    if (!result.data || !Array.isArray(result.data)) {
+                        throw new Error("データの形式が不正です(dataプロパティが配列ではありません)。GASのコードが古い可能性があります。");
+                    }
+                    
+                    allDaysData = result.data;
+                    loading.classList.add('hidden');
+                    mainContent.classList.remove('hidden');
+                    switchWeek(0);
                 } else {
-                    throw new Error(data.message);
+                    throw new Error(result.message || '不明なAPIエラー');
                 }
             } catch (err) {
-                loading.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
+                loading.classList.add('hidden');
+                errorArea.style.display = 'block';
+                errorMsg.innerHTML = `詳細: ${err.message}`;
+                console.error(err);
             }
-        }
+        });
 
-        function render(events) {
-            const content = document.getElementById('content');
-            if (events.length === 0) {
-                content.innerHTML = '<div class="status-card" style="text-align:center;">現在、予約はありません。</div>';
+        function switchWeek(weekIndex) {
+            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === weekIndex);
+            });
+
+            const start = weekIndex * 7;
+            const end = start + 7;
+            
+            // データが存在するかガード
+            if (!allDaysData || allDaysData.length === 0) {
+                renderCalendar([]);
                 return;
             }
 
-            const grouped = events.reduce((acc, ev) => {
-                const date = new Date(ev.startTime).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
-                if (!acc[date]) acc[date] = [];
-                acc[date].push(ev);
-                return acc;
-            }, {});
-
-            content.innerHTML = Object.entries(grouped).map(([date, items]) => `
-                <div class="status-card">
-                    <div class="date-header"><div class="date-label">${date}</div></div>
-                    ${items.map(item => `
-                        <div class="event-item">
-                            <div style="font-weight:500;">${new Date(item.startTime).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit'})} - ${new Date(item.endTime).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit'})}</div>
-                            <div class="status-badge">予約あり</div>
-                        </div>
-                    `).join('')}
-                </div>
-            `).join('');
+            const weekData = allDaysData.slice(start, end);
+            renderCalendar(weekData);
         }
 
-        init();
+        function renderCalendar(days) {
+            const container = document.getElementById('calendar-area');
+            if (!days || days.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center;">表示できるデータがありません</div>';
+                return;
+            }
+
+            container.innerHTML = days.map(day => {
+                const dateObj = new Date(day.date);
+                const dateStr = dateObj.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+                const isHoliday = day.isHoliday;
+                
+                return `
+                    <div class="day-card">
+                        <div class="date-header">
+                            <span>${dateStr}</span>
+                            ${isHoliday ? `<span class="holiday-badge">${day.holidayReason || '店休'}</span>` : ''}
+                        </div>
+                        <div class="slot-grid">
+                            ${(day.slots || []).map(slot => {
+                                const time = new Date(slot.time).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+                                let symbol = '×';
+                                let text = slot.reason;
+                                let cls = slot.status;
+                                
+                                if (slot.status === 'available') {
+                                    symbol = '○';
+                                    text = '空き';
+                                }
+                                return `
+                                    <div class="slot-item ${cls}">
+                                        <div class="time-label">${time}</div>
+                                        <div class="symbol">${symbol}</div>
+                                        <div class="status-text">${text}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
     </script>
 </body>
 </html>

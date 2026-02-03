@@ -11,6 +11,7 @@
         :root {
             --primary: #2c3e50;
             --success: #27ae60;
+            --danger: #e74c3c;
             --bg: #f8f9fa;
         }
         body {
@@ -40,14 +41,12 @@
         .symbol { font-size: 1.2rem; font-weight: bold; }
         .status-text { font-size: 0.7rem; }
 
-        /* ローディング表示 */
-        #initial-loading { text-align: center; padding: 40px; }
-        #week-loading { text-align: center; padding: 20px; color: #7f8c8d; display: none; }
+        #loading { text-align: center; padding: 40px; }
         .spinner { width: 30px; height: 30px; border: 3px solid #ddd; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* エラー表示 */
-        #error-area { display: none; background: #ffecec; padding: 20px; border-radius: 8px; color: #c0392b; }
+        
+        /* エラー表示エリア */
+        #error-area { display: none; background: #ffecec; border: 1px solid #f5c6cb; color: #721c24; padding: 20px; border-radius: 8px; margin-top: 20px; word-break: break-all; }
         .hidden { display: none; }
     </style>
 </head>
@@ -55,12 +54,17 @@
     <div class="container">
         <header>
             <h1>hair studio.VIVALTO</h1>
-            <div style="font-size:0.8rem; color:#7f8c8d;">ご予約空き状況</div>
+            <div style="font-size:0.8rem; color:#7f8c8d;">ご予約空き状況 (28日間)</div>
         </header>
 
-        <!-- 初回ロード用 -->
-        <div id="initial-loading"><div class="spinner"></div>準備中...</div>
-        <div id="error-area"></div>
+        <div id="loading"><div class="spinner"></div>確認中...</div>
+        
+        <!-- エラー表示用 -->
+        <div id="error-area">
+            <h3>通信エラー</h3>
+            <p id="error-msg"></p>
+            <p style="font-size:0.8rem; margin-top:10px;">開発者の方へ: GASのデプロイ更新(新バージョン発行)が行われているか確認してください。</p>
+        </div>
 
         <div id="main-content" class="hidden">
             <div class="tabs">
@@ -69,16 +73,10 @@
                 <button class="tab-btn" onclick="switchWeek(2)">3週目</button>
                 <button class="tab-btn" onclick="switchWeek(3)">4週目</button>
             </div>
-
-            <!-- 週切り替え時のローディング -->
-            <div id="week-loading"><div class="spinner"></div>読み込み中...</div>
-            
             <div id="calendar-area"></div>
         </div>
         
-        <footer style="margin-top:20px; font-size:0.7rem; color:#bdc3c7; text-align:center;">
-            &copy; hair studio.VIVALTO
-        </footer>
+        <footer>&copy; hair studio.VIVALTO</footer>
     </div>
 
     <script>
@@ -87,91 +85,72 @@
         // ==========================================
         const API_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw3XQBk_6-tNTQplsLdmzh9DTkd4n7usJTZ8Ecl98ldW5zPRvWpZgpvxKw6aiEihPVE6g/exec';
         
-        // 取得したデータを週ごとにキャッシュするオブジェクト
-        // { 0: [...], 1: [...] }
-        let weeksDataCache = {};
-        let currentWeekIndex = 0;
+        let allDaysData = [];
 
         window.addEventListener('DOMContentLoaded', async () => {
-            const initialLoading = document.getElementById('initial-loading');
+            const loading = document.getElementById('loading');
             const mainContent = document.getElementById('main-content');
             const errorArea = document.getElementById('error-area');
+            const errorMsg = document.getElementById('error-msg');
 
             try {
                 if (API_ENDPOINT.includes('ここにGAS')) {
-                    throw new Error('API URLが未設定です。index.htmlを編集してください。');
+                    throw new Error('API URLが設定されていません。index.htmlを編集してください。');
                 }
 
-                // 初回は今週分(0)を取得
-                await fetchWeekData(0);
-
-                initialLoading.classList.add('hidden');
-                mainContent.classList.remove('hidden');
+                const response = await fetch(API_ENDPOINT);
                 
-                // 描画
-                renderCalendar(weeksDataCache[0]);
+                // レスポンスがJSONかどうか確認
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("GASからの応答がJSONではありません。デプロイ設定を確認してください。");
+                }
 
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    // データ構造チェック
+                    if (!result.data || !Array.isArray(result.data)) {
+                        throw new Error("データの形式が不正です(dataプロパティが配列ではありません)。GASのコードが古い可能性があります。");
+                    }
+                    
+                    allDaysData = result.data;
+                    loading.classList.add('hidden');
+                    mainContent.classList.remove('hidden');
+                    switchWeek(0);
+                } else {
+                    throw new Error(result.message || '不明なAPIエラー');
+                }
             } catch (err) {
-                initialLoading.classList.add('hidden');
+                loading.classList.add('hidden');
                 errorArea.style.display = 'block';
-                errorArea.innerHTML = `エラーが発生しました:<br>${err.message}`;
+                errorMsg.innerHTML = `詳細: ${err.message}`;
+                console.error(err);
             }
         });
 
-        // 週データを取得する関数
-        async function fetchWeekData(weekIndex) {
-            // キャッシュがあれば何もしない
-            if (weeksDataCache[weekIndex]) return;
-
-            // URLにパラメータ ?week=n を付与してリクエスト
-            const response = await fetch(`${API_ENDPOINT}?week=${weekIndex}`);
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                weeksDataCache[weekIndex] = result.data;
-            } else {
-                throw new Error(result.message || 'データ取得失敗');
-            }
-        }
-
-        // タブ切り替え処理
-        async function switchWeek(weekIndex) {
-            if (currentWeekIndex === weekIndex && weeksDataCache[weekIndex]) return;
-            
-            currentWeekIndex = weekIndex;
-
-            // タブの見た目更新
+        function switchWeek(weekIndex) {
             document.querySelectorAll('.tab-btn').forEach((btn, i) => {
                 btn.classList.toggle('active', i === weekIndex);
             });
 
-            const calendarArea = document.getElementById('calendar-area');
-            const weekLoading = document.getElementById('week-loading');
-
-            // データがまだなければ取得
-            if (!weeksDataCache[weekIndex]) {
-                calendarArea.style.display = 'none';
-                weekLoading.style.display = 'block';
-                try {
-                    await fetchWeekData(weekIndex);
-                } catch (e) {
-                    calendarArea.innerHTML = '<p style="text-align:center;color:red;">読み込み失敗</p>';
-                    weekLoading.style.display = 'none';
-                    calendarArea.style.display = 'block';
-                    return;
-                }
+            const start = weekIndex * 7;
+            const end = start + 7;
+            
+            // データが存在するかガード
+            if (!allDaysData || allDaysData.length === 0) {
+                renderCalendar([]);
+                return;
             }
 
-            // 描画
-            weekLoading.style.display = 'none';
-            calendarArea.style.display = 'block';
-            renderCalendar(weeksDataCache[weekIndex]);
+            const weekData = allDaysData.slice(start, end);
+            renderCalendar(weekData);
         }
 
         function renderCalendar(days) {
             const container = document.getElementById('calendar-area');
             if (!days || days.length === 0) {
-                container.innerHTML = '<div style="padding:20px; text-align:center;">データなし</div>';
+                container.innerHTML = '<div style="padding:20px; text-align:center;">表示できるデータがありません</div>';
                 return;
             }
 
